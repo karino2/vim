@@ -3529,13 +3529,10 @@ static char_u *build_drop_cmd(int filec, char **filev, int tabs, int sendReply);
     static void
 exec_on_server(mparm_T *parmp)
 {
+    char_u *servername;
+
     if (parmp->serverName_arg == NULL || *parmp->serverName_arg != NUL)
     {
-# ifdef WIN32
-	/* Initialise the client/server messaging infrastructure. */
-	serverInitMessaging();
-# endif
-
 	/*
 	 * When a command server argument was found, execute it.  This may
 	 * exit Vim when it was successful.  Otherwise it's executed further
@@ -3550,18 +3547,17 @@ exec_on_server(mparm_T *parmp)
 # endif
 	}
 
+	cmdsrv_init();
+
 	/* If we're still running, get the name to register ourselves.
-	 * On Win32 can register right now, for X11 need to setup the
-	 * clipboard first, it's further down. */
-	parmp->servername = serverMakeName(parmp->serverName_arg,
-							      parmp->argv[0]);
-# ifdef WIN32
-	if (parmp->servername != NULL)
+	 * And register server */
+	servername = serverMakeName(parmp->serverName_arg, parmp->argv[0]);
+	if (servername != NULL)
 	{
-	    serverSetName(parmp->servername);
-	    vim_free(parmp->servername);
+	    cmdsrv_register_name(servername);
+	    vim_free(servername);
+	    TIME_MSG("register server name");
 	}
-# endif
     }
 }
 
@@ -3571,31 +3567,6 @@ exec_on_server(mparm_T *parmp)
     static void
 prepare_server(mparm_T *parmp)
 {
-# if defined(FEAT_X11)
-    /*
-     * Register for remote command execution with :serversend and --remote
-     * unless there was a -X or a --servername '' on the command line.
-     * Only register nongui-vim's with an explicit --servername argument.
-     * When running as root --servername is also required.
-     */
-    if (X_DISPLAY != NULL && parmp->servername != NULL && (
-#  ifdef FEAT_GUI
-		(gui.in_use
-#   ifdef UNIX
-		 && getuid() != ROOT_UID
-#   endif
-		) ||
-#  endif
-		parmp->serverName_arg != NULL))
-    {
-	(void)serverRegisterName(X_DISPLAY, parmp->servername);
-	vim_free(parmp->servername);
-	TIME_MSG("register server name");
-    }
-    else
-	serverDelayedStartName = parmp->servername;
-# endif
-
     /*
      * Execute command ourselves if we're here because the send failed (or
      * else we would have exited above).
@@ -3620,6 +3591,7 @@ cmdsrv_main(
     char_u	*res;
     int		i;
     char_u	*sname;
+    char_u	*serverid;
     int		ret;
     int		didone = FALSE;
     int		exiterr = 0;
@@ -3633,17 +3605,20 @@ cmdsrv_main(
 #define ARGTYPE_SEND		3
     int		silent = FALSE;
     int		tabs = FALSE;
-# ifndef FEAT_X11
-    HWND	srv;
-# else
-    Window	srv;
 
-    setup_term_clip();
-# endif
+    /* start temporary server to receive reply */
+    if (cmdsrv_init() != 0)
+	return;
+
+    if (cmdsrv_register_name((char_u *)CMDSRV_TMPNAME) != 0)
+	return;
 
     sname = serverMakeName(serverName_arg, argv[0]);
     if (sname == NULL)
 	return;
+
+    /* If server is not found, show error later. */
+    serverid = cmdsrv_find_server(sname, TRUE);
 
     /*
      * Execute the command server related arguments and remove them
@@ -3718,20 +3693,17 @@ cmdsrv_main(
 		}
 		Argc = i;
 	    }
-# ifdef FEAT_X11
-	    if (xterm_dpy == NULL)
+	    if (serverid == NULL)
 	    {
-		mch_errmsg(_("No display"));
+		if (!silent)
+		    EMSG2(_(e_noserver), sname);
 		ret = -1;
 	    }
 	    else
-		ret = serverSendToVim(xterm_dpy, sname, *serverStr,
-						    NULL, &srv, 0, 0, silent);
-# else
-	    /* Win32 always works? */
-	    ret = serverSendToVim(sname, *serverStr, NULL, &srv, 0, silent);
-# endif
-	    if (ret < 0)
+	    {
+		ret = cmdsrv_send_keys(serverid, *serverStr);
+	    }
+	    if (ret != 0)
 	    {
 		if (argtype == ARGTYPE_SEND)
 		{
@@ -3748,85 +3720,56 @@ cmdsrv_main(
 
 # ifdef FEAT_GUI_W32
 	    /* Guess that when the server name starts with "g" it's a GUI
-	     * server, which we can bring to the foreground here.
-	     * Foreground() in the server doesn't work very well. */
-	    if (argtype != ARGTYPE_SEND && TOUPPER_ASC(*sname) == 'G')
-		SetForegroundWindow(srv);
+	     * server, which we can bring to the foreground here. */
+	    if (argtype != ARGTYPE_SEND && TOUPPER_ASC(*serverid) == 'G')
+		cmdsrv_foreground(serverid);
 # endif
 
 	    /*
 	     * For --remote-wait: Wait until the server did edit each
 	     * file.  Also detect that the server no longer runs.
 	     */
-	    if (ret >= 0 && argtype == ARGTYPE_EDIT_WAIT)
+	    if (argtype == ARGTYPE_EDIT_WAIT)
 	    {
 		int	numFiles = *argc - i - 1;
 		int	j;
 		char_u  *done = alloc(numFiles);
 		char_u  *p;
-# ifdef FEAT_GUI_W32
-		NOTIFYICONDATA ni;
-		int	count = 0;
-		extern HWND message_window;
-# endif
 
 		if (numFiles > 0 && argv[i + 1][0] == '+')
 		    /* Skip "+cmd" argument, don't wait for it to be edited. */
 		    --numFiles;
 
-# ifdef FEAT_GUI_W32
-		ni.cbSize = sizeof(ni);
-		ni.hWnd = message_window;
-		ni.uID = 0;
-		ni.uFlags = NIF_ICON|NIF_TIP;
-		ni.hIcon = LoadIcon((HINSTANCE)GetModuleHandle(0), "IDR_VIM");
-		sprintf(ni.szTip, _("%d of %d edited"), count, numFiles);
-		Shell_NotifyIcon(NIM_ADD, &ni);
-# endif
-
 		/* Wait for all files to unload in remote */
 		vim_memset(done, 0, numFiles);
 		while (memchr(done, 0, numFiles) != NULL)
 		{
-# ifdef WIN32
-		    p = serverGetReply(srv, NULL, TRUE, TRUE);
+		    if (cmdsrv_wait_reply(serverid, &p) != 0)
+			break;
 		    if (p == NULL)
 			break;
-# else
-		    if (serverReadReply(xterm_dpy, srv, &p, TRUE) < 0)
-			break;
-# endif
 		    j = atoi((char *)p);
 		    if (j >= 0 && j < numFiles)
 		    {
-# ifdef FEAT_GUI_W32
-			++count;
-			sprintf(ni.szTip, _("%d of %d edited"),
-							     count, numFiles);
-			Shell_NotifyIcon(NIM_MODIFY, &ni);
-# endif
 			done[j] = 1;
 		    }
 		}
-# ifdef FEAT_GUI_W32
-		Shell_NotifyIcon(NIM_DELETE, &ni);
-# endif
 	    }
 	}
 	else if (STRICMP(argv[i], "--remote-expr") == 0)
 	{
 	    if (i == *argc - 1)
 		mainerr_arg_missing((char_u *)argv[i]);
-# ifdef WIN32
-	    /* Win32 always works? */
-	    if (serverSendToVim(sname, (char_u *)argv[i + 1],
-						    &res, NULL, 1, FALSE) < 0)
-# else
-	    if (xterm_dpy == NULL)
-		mch_errmsg(_("No display: Send expression failed.\n"));
-	    else if (serverSendToVim(xterm_dpy, sname, (char_u *)argv[i + 1],
-						 &res, NULL, 1, 1, FALSE) < 0)
-# endif
+	    if (serverid == NULL)
+	    {
+		EMSG2(_(e_noserver), sname);
+		ret = -1;
+	    }
+	    else
+	    {
+		ret = cmdsrv_send_expr(serverid, (char_u *)argv[i + 1], &res);
+	    }
+	    if (ret != 0)
 	    {
 		if (res != NULL && *res != NUL)
 		{
@@ -3840,13 +3783,7 @@ cmdsrv_main(
 	}
 	else if (STRICMP(argv[i], "--serverlist") == 0)
 	{
-# ifdef WIN32
-	    /* Win32 always works? */
-	    res = serverGetVimNames();
-# else
-	    if (xterm_dpy != NULL)
-		res = serverGetVimNames(xterm_dpy);
-# endif
+	    cmdsrv_server_list(&res);
 	    if (called_emsg)
 		mch_errmsg("\n");
 	}
@@ -3872,6 +3809,8 @@ cmdsrv_main(
 	vim_free(res);
     }
 
+    cmdsrv_uninit();
+
     if (didone)
     {
 	display_errors();	/* display any collected messages */
@@ -3881,6 +3820,7 @@ cmdsrv_main(
     /* Return back into main() */
     *argc = newArgC;
     vim_free(sname);
+    vim_free(serverid);
 }
 
 /*

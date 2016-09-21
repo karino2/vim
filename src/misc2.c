@@ -1215,10 +1215,6 @@ free_all_mem(void)
     ResetRedobuff();
     ResetRedobuff();
 
-#if defined(FEAT_CLIENTSERVER) && defined(FEAT_X11)
-    vim_free(serverDelayedStartName);
-#endif
-
     /* highlight info */
     free_highlight();
 

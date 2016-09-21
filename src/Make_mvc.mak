@@ -397,6 +397,10 @@ CHANNEL_DEFS	= -DFEAT_JOB_CHANNEL
 NETBEANS_LIB	= WSock32.lib
 !endif
 
+CMDSRV_PRO	= proto/if_cmdsrv.pro
+CMDSRV_OBJ	= $(OBJDIR)/if_cmdsrv.obj
+CMDSRV_DEFS	=
+
 # Set which version of the CRT to use
 !if defined(USE_MSVCRT)
 # CVARS = $(cvarsdll)
@@ -430,6 +434,7 @@ WINVER = 0x0501
 CFLAGS = -c /W3 /nologo $(CVARS) -I. -Iproto -DHAVE_PATHDEF -DWIN32 \
 		$(CSCOPE_DEFS) $(NETBEANS_DEFS) $(CHANNEL_DEFS) \
 		$(NBDEBUG_DEFS) $(XPM_DEFS) \
+		$(CMDSRV_DEFS) \
 		$(DEFINES) -DWINVER=$(WINVER) -D_WIN32_WINNT=$(WINVER) \
 		/Fo$(OUTDIR)/ 
 
@@ -1046,12 +1051,12 @@ all:	$(VIM).exe \
 $(VIM).exe: $(OUTDIR) $(OBJ) $(GUI_OBJ) $(CUI_OBJ) $(OLE_OBJ) $(OLE_IDL) $(MZSCHEME_OBJ) \
 		$(LUA_OBJ) $(PERL_OBJ) $(PYTHON_OBJ) $(PYTHON3_OBJ) $(RUBY_OBJ) $(TCL_OBJ) \
 		$(CSCOPE_OBJ) $(NETBEANS_OBJ) $(CHANNEL_OBJ) $(XPM_OBJ) \
-		version.c version.h
+		$(CMDSRV_OBJ) version.c version.h
 	$(CC) $(CFLAGS) version.c
 	$(link) $(LINKARGS1) -out:$(VIM).exe $(OBJ) $(GUI_OBJ) $(CUI_OBJ) $(OLE_OBJ) \
 		$(LUA_OBJ) $(MZSCHEME_OBJ) $(PERL_OBJ) $(PYTHON_OBJ) $(PYTHON3_OBJ) $(RUBY_OBJ) \
 		$(TCL_OBJ) $(CSCOPE_OBJ) $(NETBEANS_OBJ) $(CHANNEL_OBJ) \
-		$(XPM_OBJ) $(OUTDIR)\version.obj $(LINKARGS2)
+		$(XPM_OBJ) $(CMDSRV_OBJ) $(OUTDIR)\version.obj $(LINKARGS2)
 	if exist $(VIM).exe.manifest mt.exe -nologo -manifest $(VIM).exe.manifest -updateresource:$(VIM).exe;1
 
 $(VIM): $(VIM).exe
@@ -1279,6 +1284,8 @@ $(OUTDIR)/netbeans.obj: $(OUTDIR) netbeans.c $(NBDEBUG_SRC) $(INCL)
 
 $(OUTDIR)/channel.obj: $(OUTDIR) channel.c $(INCL)
 
+$(OUTDIR)/if_cmdsrv.obj: $(OUTDIR) if_cmdsrv.c if_cmdsrv_win32.c $(INCL)
+
 $(OUTDIR)/normal.obj:	$(OUTDIR) normal.c  $(INCL)
 
 $(OUTDIR)/option.obj:	$(OUTDIR) option.c  $(INCL)
@@ -1426,6 +1433,7 @@ proto.h: \
 	proto/userfunc.pro \
 	proto/window.pro \
 	$(NETBEANS_PRO) \
+	$(CMDSRV_PRO) \
 	$(CHANNEL_PRO)
 
 .SUFFIXES: .cod .i

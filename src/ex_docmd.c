@@ -10732,9 +10732,9 @@ eval_vars(
 		break;
 #if defined(FEAT_CLIENTSERVER)
 	case SPEC_CLIENT:	/* Source of last submitted input */
-		sprintf((char *)strbuf, PRINTF_HEX_LONG_U,
-							(long_u)clientWindow);
-		result = strbuf;
+		result = cmdsrv_clientid;
+		if (result == NULL)
+		    result = (char_u *)"";
 		break;
 #endif
 	}

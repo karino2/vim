@@ -203,11 +203,6 @@ EXTERN int	intr_char INIT(= 0);	    /* extra interrupt character */
 #endif
 #if (defined(UNIX) || defined(VMS)) && defined(FEAT_X11)
 EXTERN int	x_no_connect INIT(= FALSE); /* don't connect to X server */
-# if defined(FEAT_CLIENTSERVER)
-EXTERN int	x_force_connect INIT(= FALSE); /* Do connect to X server.
-						  Overrules x_no_connect and
-						  "exclude" in 'clipboard'. */
-# endif
 #endif
 EXTERN int	ex_keep_indent INIT(= FALSE); /* getexmodeline(): keep indent */
 EXTERN int	vgetc_busy INIT(= 0);	    /* when inside vgetc() then > 0 */
@@ -1335,17 +1330,18 @@ EXTERN int	typebuf_was_filled INIT(= FALSE); /* received text from client
 
 #ifdef FEAT_CLIENTSERVER
 EXTERN char_u	*serverName INIT(= NULL);	/* name of the server */
-# ifdef FEAT_X11
-EXTERN Window	commWindow INIT(= None);
-EXTERN Window	clientWindow INIT(= None);
-EXTERN Atom	commProperty INIT(= None);
-EXTERN char_u	*serverDelayedStartName INIT(= NULL);
+EXTERN char_u	*cmdsrv_clientid INIT(= NULL);	/* Source of last
+						   submitted input */
+# ifdef WIN3264
++EXTERN HANDLE	*cmdsrv_events INIT(= NULL);	/* network events */
 # else
-#  ifdef PROTO
-typedef int HWND;
+EXTERN int	cmdsrv_listenfd INIT(= -1);	/* server socket */
 #  endif
-EXTERN HWND	clientWindow INIT(= 0);
-# endif
+/* The maximum length of the pending connections queue.
+ * For win32, length of cmdsrv_events */
+# define CMDSRV_INSTANCES 5
+/* Temporary server name to receive --remote-wait response */
+# define CMDSRV_TMPNAME "tmp"
 #endif
 
 #if defined(UNIX) || defined(VMS)
@@ -1500,6 +1496,7 @@ EXTERN char_u e_norange[]	INIT(= N_("E481: No range allowed"));
 EXTERN char_u e_noroom[]	INIT(= N_("E36: Not enough room"));
 #endif
 #ifdef FEAT_CLIENTSERVER
+EXTERN char_u e_unabletosend[]	INIT(= N_("E241: Unable to send to %s"));
 EXTERN char_u e_noserver[]	INIT(= N_("E247: no registered server named \"%s\""));
 #endif
 EXTERN char_u e_notcreate[]	INIT(= N_("E482: Can't create file %s"));

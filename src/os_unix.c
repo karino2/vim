@@ -406,6 +406,10 @@ mch_inchar(
     parse_queued_messages();
 #endif
 
+#if defined(FEAT_CLIENTSERVER)
+    cmdsrv_handle_requests();
+#endif
+
     /* Check if window changed size while we were busy, perhaps the ":set
      * columns=99" command was used. */
     while (do_resize)
@@ -432,7 +436,7 @@ mch_inchar(
 		continue;
 	    }
 #ifdef FEAT_CLIENTSERVER
-	    if (server_waiting())
+	    if (interrupted)
 	    {
 		parse_queued_messages();
 		continue;
@@ -495,6 +499,9 @@ mch_inchar(
 	}
 # endif
 #endif
+#ifdef FEAT_CLIENTSERVER
+	cmdsrv_handle_requests();
+#endif
 	/*
 	 * We want to be interrupted by the winch signal
 	 * or by an event on the monitored file descriptors.
@@ -507,6 +514,13 @@ mch_inchar(
 	    if (interrupted || wtime_now > 0)
 	    {
 		parse_queued_messages();
+		continue;
+	    }
+#endif
+#ifdef FEAT_CLIENTSERVER
+	    if (interrupted || wtime_now > 0)
+	    {
+	    	cmdsrv_handle_requests();
 		continue;
 	    }
 #endif
@@ -1463,6 +1477,9 @@ catch_signals(
 	    signal(signal_info[i].sig, func_deadly);
 # endif
 #endif
+#ifdef FEAT_CLIENTSERVER
+	    cmdsrv_handle_requests();
+#endif
 	}
 	else if (func_other != SIG_ERR)
 	    signal(signal_info[i].sig, func_other);
@@ -1661,10 +1678,6 @@ may_restore_clipboard(void)
     static int
 x_connect_to_server(void)
 {
-#if defined(FEAT_CLIENTSERVER)
-    if (x_force_connect)
-	return TRUE;
-#endif
     if (x_no_connect)
 	return FALSE;
 
@@ -3328,6 +3341,10 @@ mch_exit(int r)
 
 #ifdef FEAT_NETBEANS_INTG
     netbeans_send_disconnect();
+#endif
+
+#ifdef FEAT_CLIENTSERVER
+    cmdsrv_uninit();
 #endif
 
 #ifdef EXITFREE
@@ -5525,6 +5542,9 @@ RealWaitForChar(int fd, long msec, int *check_for_gpm UNUSED, int *interrupted)
 {
     int		ret;
     int		result;
+#ifdef FEAT_CLIENTSERVER
+    int		cmdsrv_fd = cmdsrv_listenfd;
+#endif
 #if defined(FEAT_XCLIPBOARD) || defined(USE_XSMP) || defined(FEAT_MZSCHEME)
     static int	busy = FALSE;
 
@@ -5560,7 +5580,11 @@ RealWaitForChar(int fd, long msec, int *check_for_gpm UNUSED, int *interrupted)
 #endif
 #ifndef HAVE_SELECT
 			/* each channel may use in, out and err */
+#ifdef FEAT_CLIENTSERVER
+	struct pollfd   fds[6 + 1 + 3 * MAX_OPEN_CHANNELS];
+#else
 	struct pollfd   fds[6 + 3 * MAX_OPEN_CHANNELS];
+#endif
 	int		nfd;
 # ifdef FEAT_XCLIPBOARD
 	int		xterm_idx = -1;
@@ -5570,6 +5594,9 @@ RealWaitForChar(int fd, long msec, int *check_for_gpm UNUSED, int *interrupted)
 # endif
 # ifdef USE_XSMP
 	int		xsmp_idx = -1;
+# endif
+# ifdef FEAT_CLIENTSERVER
+	int		cmdsrv_idx = -1;
 # endif
 	int		towait = (int)msec;
 
@@ -5613,6 +5640,15 @@ RealWaitForChar(int fd, long msec, int *check_for_gpm UNUSED, int *interrupted)
 	    nfd++;
 	}
 # endif
+#ifdef FEAT_CLIENTSERVER
+	if (cmdsrv_fd != -1)
+	{
+	    cmdsrv_idx = nfd;
+	    fds[nfd].fd = cmdsrv_fd;
+	    fds[nfd].events = POLLIN;
+	    nfd++;
+	}
+#endif
 #ifdef FEAT_JOB_CHANNEL
 	nfd = channel_poll_setup(nfd, &fds);
 #endif
@@ -5669,6 +5705,13 @@ RealWaitForChar(int fd, long msec, int *check_for_gpm UNUSED, int *interrupted)
 	if (ret > 0)
 	    ret = channel_poll_check(ret, &fds);
 #endif
+# ifdef FEAT_CLIENTSERVER
+	if (ret > 0 && cmdsrv_idx != -1 && (fds[cmdsrv_idx].revents & POLLIN))
+	{
+	    cmdsrv_handle_requests();
+	    --ret;
+	}
+# endif
 
 #else /* HAVE_SELECT */
 
@@ -5676,6 +5719,9 @@ RealWaitForChar(int fd, long msec, int *check_for_gpm UNUSED, int *interrupted)
 	struct timeval	*tvp;
 	fd_set		rfds, wfds, efds;
 	int		maxfd;
+# ifdef FEAT_CLIENTSERVER
+	int		cmdsrv_idx = -1;
+# endif
 	long		towait = msec;
 
 # ifdef FEAT_MZSCHEME
@@ -5739,6 +5785,14 @@ select_eintr:
 	    FD_SET(xsmp_icefd, &efds);
 	    if (maxfd < xsmp_icefd)
 		maxfd = xsmp_icefd;
+	}
+# endif
+# ifdef FEAT_CLIENTSERVER
+	if (cmdsrv_fd != -1)
+	{
+	    FD_SET(cmdsrv_fd, &rfds);
+	    if (maxfd < cmdsrv_fd)
+		maxfd = cmdsrv_fd;
 	}
 # endif
 # ifdef FEAT_JOB_CHANNEL
@@ -5825,6 +5879,13 @@ select_eintr:
 		if (--ret == 0)
 		    finished = FALSE;   /* keep going if event was only one */
 	    }
+	}
+# endif
+# ifdef FEAT_CLIENTSERVER
+	if (ret > 0 && cmdsrv_fd != -1 && FD_ISSET(cmdsrv_fd, &rfds))
+	{
+	    cmdsrv_handle_requests();
+	    --ret;
 	}
 # endif
 #ifdef FEAT_JOB_CHANNEL

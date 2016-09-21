@@ -1165,7 +1165,7 @@
  * +clientserver	Remote control via the remote_send() function
  *			and the --remote argument
  */
-#if (defined(WIN32) || defined(FEAT_XCLIPBOARD)) && defined(FEAT_EVAL)
+#if (defined(WIN32) || defined(UNIX)) && defined(FEAT_EVAL)
 # define FEAT_CLIENTSERVER
 #endif
 

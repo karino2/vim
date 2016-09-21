@@ -1486,7 +1486,7 @@ WaitForChar(long msec)
 	mzvim_check_threads();
 #endif
 #ifdef FEAT_CLIENTSERVER
-	serverProcessPendingMessages();
+	cmdsrv_handle_requests();
 #endif
 
 	if (0
@@ -1510,6 +1510,25 @@ WaitForChar(long msec)
 	if (msec != 0)
 	{
 	    DWORD dwWaitTime = dwEndTime - dwNow;
+	    DWORD dwWait;
+	    int nitems = 0;
+#ifdef FEAT_CLIENTSERVER
+	    HANDLE hObjects[1 + CMDSRV_INSTANCES];
+#else
+	    HANDLE hObjects[1];
+#endif
+
+	    hObjects[nitems++] = g_hConIn;
+
+#ifdef FEAT_CLIENTSERVER
+	    if (cmdsrv_events != NULL)
+	    {
+		mch_memmove(hObjects + nitems, cmdsrv_events,
+			sizeof(HANDLE) * CMDSRV_INSTANCES);
+		nitems += CMDSRV_INSTANCES;
+	    }
+#endif
+ 
 
 #ifdef FEAT_JOB_CHANNEL
 	    /* Check channel while waiting input. */
@@ -1541,15 +1560,15 @@ WaitForChar(long msec)
 		}
 	    }
 #endif
-#ifdef FEAT_CLIENTSERVER
-	    /* Wait for either an event on the console input or a message in
-	     * the client-server window. */
-	    if (msg_wait_for_multiple_objects(1, &g_hConIn, FALSE,
-				 dwWaitTime, QS_SENDMESSAGE) != WAIT_OBJECT_0)
-#else
-	    if (wait_for_single_object(g_hConIn, dwWaitTime) != WAIT_OBJECT_0)
-#endif
-		    continue;
+
+	    dwWait = WaitForMultipleObjects(nitems, hObjects, FALSE, dwWaitTime);
+	    if (dwWait == WAIT_FAILED)
+		break;
+	    else if (dwWait == WAIT_TIMEOUT)
+		break;
+	    else if (dwWait != WAIT_OBJECT_0)
+		/* Signaled object is not g_hConIn. */
+		continue;
 	}
 
 	cRecords = 0;
@@ -2610,6 +2629,10 @@ mch_exit(int r)
 	settmode(TMODE_COOK);
 
     ml_close_all(TRUE);		/* remove all memfiles */
+
+#ifdef FEAT_CLIENTSERVER
+    cmdsrv_uninit();
+#endif
 
     if (g_fWindInitCalled)
     {

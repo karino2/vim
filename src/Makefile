@@ -1521,7 +1521,7 @@ BASIC_SRC = \
 	hardcopy.c \
 	hashtab.c \
 	if_cscope.c \
-	if_xcmdsrv.c \
+	if_cmdsrv.c \
 	json.c \
 	list.c \
 	main.c \
@@ -1629,7 +1629,7 @@ OBJ_COMMON = \
 	objects/hashtab.o \
 	$(HANGULIN_OBJ) \
 	objects/if_cscope.o \
-	objects/if_xcmdsrv.o \
+	objects/if_cmdsrv.o \
 	objects/list.o \
 	objects/mark.o \
 	objects/memline.o \
@@ -1726,7 +1726,7 @@ PRO_AUTO = \
 	if_python.pro \
 	if_python3.pro \
 	if_ruby.pro \
-	if_xcmdsrv.pro \
+	if_cmdsrv.pro \
 	json.pro \
 	list.pro \
 	main.pro \
@@ -2967,8 +2967,8 @@ objects/hangulin.o: hangulin.c
 objects/if_cscope.o: if_cscope.c
 	$(CCC) -o $@ if_cscope.c
 
-objects/if_xcmdsrv.o: if_xcmdsrv.c
-	$(CCC) -o $@ if_xcmdsrv.c
+objects/if_cmdsrv.o: if_cmdsrv.c
+	$(CCC) -o $@ if_cmdsrv.c
 
 objects/if_lua.o: if_lua.c
 	$(CCC) $(LUA_CFLAGS) -o $@ if_lua.c
@@ -3328,10 +3328,10 @@ objects/if_cscope.o: if_cscope.c vim.h auto/config.h feature.h os_unix.h \
  auto/osdef.h ascii.h keymap.h term.h macros.h option.h structs.h \
  regexp.h gui.h gui_beval.h proto/gui_beval.pro alloc.h ex_cmds.h spell.h \
  proto.h globals.h farsi.h arabic.h if_cscope.h
-objects/if_xcmdsrv.o: if_xcmdsrv.c vim.h auto/config.h feature.h os_unix.h \
+objects/if_cmdsrv.o: if_cmdsrv.c vim.h auto/config.h feature.h os_unix.h \
  auto/osdef.h ascii.h keymap.h term.h macros.h option.h structs.h \
  regexp.h gui.h gui_beval.h proto/gui_beval.pro alloc.h ex_cmds.h spell.h \
- proto.h globals.h farsi.h arabic.h version.h
+ proto.h globals.h farsi.h arabic.h version.h if_cmdsrv_unix.c
 objects/json.o: json.c vim.h auto/config.h feature.h os_unix.h auto/osdef.h \
  ascii.h keymap.h term.h macros.h option.h structs.h regexp.h gui.h \
  gui_beval.h proto/gui_beval.pro alloc.h ex_cmds.h spell.h proto.h \

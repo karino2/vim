@@ -212,6 +212,8 @@
 #undef HAVE_USLEEP
 #undef HAVE_UTIME
 #undef HAVE_BIND_TEXTDOMAIN_CODESET
+#undef HAVE_GETPEERUCRED
+#undef HAVE_GETPEEREID
 
 /* Define, if needed, for accessing large files. */
 #undef _LARGE_FILES

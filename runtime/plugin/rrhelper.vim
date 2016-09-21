@@ -16,7 +16,7 @@ function SetupRemoteReplies()
   let max = argc()
 
   let id = expand("<client>")
-  if id == 0
+  if id == ''
     return
   endif
   while cnt < max

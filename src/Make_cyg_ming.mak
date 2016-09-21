@@ -630,6 +630,7 @@ OBJ = \
 	$(OUTDIR)/getchar.o \
 	$(OUTDIR)/hardcopy.o \
 	$(OUTDIR)/hashtab.o \
+	$(OUTDIR)/if_cmdsrv.o \
 	$(OUTDIR)/json.o \
 	$(OUTDIR)/list.o \
 	$(OUTDIR)/main.o \
@@ -930,6 +931,9 @@ $(OUTDIR)/if_mzsch.o:	if_mzsch.c $(INCL) if_mzsch.h $(MZ_EXTRA_DEP)
 
 mzscheme_base.c:
 	$(MZSCHEME)/mzc --c-mods mzscheme_base.c ++lib scheme/base
+
+$(OUTDIR)/if_cmdsrv.o: $(OUTDIR) if_cmdsrv.c if_cmdsrv_win32.c $(INCL)
+
 
 pathdef.c: $(INCL)
 ifneq (sh.exe, $(SHELL))

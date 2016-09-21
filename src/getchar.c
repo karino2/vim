@@ -2997,6 +2997,10 @@ inchar(
 	parse_queued_messages();
 #endif
 
+#if defined(FEAT_CLIENTSERVER)
+	cmdsrv_handle_requests();
+#endif
+
 	if (got_int || (script_char = getc(scriptin[curscript])) < 0)
 	{
 	    /* Reached EOF.

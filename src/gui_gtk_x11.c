@@ -747,41 +747,6 @@ expose_event(GtkWidget *widget UNUSED,
 }
 #endif /* !GTK_CHECK_VERSION(3,0,0) */
 
-#ifdef FEAT_CLIENTSERVER
-/*
- * Handle changes to the "Comm" property
- */
-    static gint
-property_event(GtkWidget *widget,
-	       GdkEventProperty *event,
-	       gpointer data UNUSED)
-{
-    if (event->type == GDK_PROPERTY_NOTIFY
-	    && event->state == (int)GDK_PROPERTY_NEW_VALUE
-# if GTK_CHECK_VERSION(3,0,0)
-	    && GDK_WINDOW_XID(event->window) == commWindow
-# else
-	    && GDK_WINDOW_XWINDOW(event->window) == commWindow
-# endif
-	    && GET_X_ATOM(event->atom) == commProperty)
-    {
-	XEvent xev;
-
-	/* Translate to XLib */
-	xev.xproperty.type = PropertyNotify;
-	xev.xproperty.atom = commProperty;
-	xev.xproperty.window = commWindow;
-	xev.xproperty.state = PropertyNewValue;
-# if GTK_CHECK_VERSION(3,0,0)
-	serverEventProc(GDK_WINDOW_XDISPLAY(gtk_widget_get_window(widget)),
-		&xev, 0);
-# else
-	serverEventProc(GDK_WINDOW_XDISPLAY(widget->window), &xev, 0);
-# endif
-    }
-    return FALSE;
-}
-#endif /* defined(FEAT_CLIENTSERVER) */
 
 
 /****************************************************************************
@@ -2815,47 +2780,6 @@ mainwin_realize(GtkWidget *widget UNUSED, gpointer data UNUSED)
     if (using_gnome)
 #endif
 	setup_save_yourself();
-
-#ifdef FEAT_CLIENTSERVER
-    if (serverName == NULL && serverDelayedStartName != NULL)
-    {
-	/* This is a :gui command in a plain vim with no previous server */
-# if GTK_CHECK_VERSION(3,0,0)
-	commWindow = GDK_WINDOW_XID(mainwin_win);
-
-	(void)serverRegisterName(GDK_WINDOW_XDISPLAY(mainwin_win),
-				 serverDelayedStartName);
-# else
-	commWindow = GDK_WINDOW_XWINDOW(gui.mainwin->window);
-
-	(void)serverRegisterName(GDK_WINDOW_XDISPLAY(gui.mainwin->window),
-				 serverDelayedStartName);
-# endif
-    }
-    else
-    {
-	/*
-	 * Cannot handle "XLib-only" windows with gtk event routines, we'll
-	 * have to change the "server" registration to that of the main window
-	 * If we have not registered a name yet, remember the window
-	 */
-# if GTK_CHECK_VERSION(3,0,0)
-	serverChangeRegisteredWindow(GDK_WINDOW_XDISPLAY(mainwin_win),
-				     GDK_WINDOW_XID(mainwin_win));
-# else
-	serverChangeRegisteredWindow(GDK_WINDOW_XDISPLAY(gui.mainwin->window),
-				     GDK_WINDOW_XWINDOW(gui.mainwin->window));
-# endif
-    }
-    gtk_widget_add_events(gui.mainwin, GDK_PROPERTY_CHANGE_MASK);
-# if GTK_CHECK_VERSION(3,0,0)
-    g_signal_connect(G_OBJECT(gui.mainwin), "property-notify-event",
-		     G_CALLBACK(property_event), NULL);
-# else
-    gtk_signal_connect(GTK_OBJECT(gui.mainwin), "property_notify_event",
-		       GTK_SIGNAL_FUNC(property_event), NULL);
-# endif
-#endif
 }
 
     static GdkCursor *
@@ -6200,8 +6124,7 @@ gui_get_x11_windis(Window *win, Display **dis)
 }
 #endif
 
-#if defined(FEAT_CLIENTSERVER) \
-	|| (defined(FEAT_X11) && defined(FEAT_CLIPBOARD)) || defined(PROTO)
+#if defined(FEAT_X11) && defined(FEAT_CLIPBOARD)) || defined(PROTO)
 
     Display *
 gui_mch_get_display(void)
@@ -6540,6 +6463,10 @@ gui_mch_wait_for_chars(long wtime)
 	    /* Need to recompute the waiting time. */
 	    goto theend;
 # endif
+#endif
+
+#if defined(FEAT_CLIENTSERVER)
+	cmdsrv_handle_requests();
 #endif
 
 	/*

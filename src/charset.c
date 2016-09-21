@@ -1972,7 +1972,7 @@ hex2nr(int c)
     return c - '0';
 }
 
-#if defined(FEAT_TERMRESPONSE) \
+#if defined(FEAT_TERMRESPONSE) || defined(FEAT_CLIENTSERVER) \
 	|| (defined(FEAT_GUI_GTK) && defined(FEAT_WINDOWS)) || defined(PROTO)
 /*
  * Convert two hex characters to a byte.

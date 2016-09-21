@@ -771,6 +771,10 @@ gui_init(void)
 	if (p_ch != 1L)
 	    command_height();
 
+#ifdef FEAT_CLIENTSERVER
+	cmdsrv_gui_register();
+#endif
+
 	return;
     }
 
@@ -789,6 +793,9 @@ error:
     void
 gui_exit(int rc)
 {
+#ifdef FEAT_CLIENTSERVER
+    cmdsrv_gui_unregister();
+#endif
     /* don't free the fonts, it leads to a BUS error
      * richard@whitequeen.com Jul 99 */
     free_highlight_fonts();
@@ -4981,6 +4988,10 @@ ex_gui(exarg_T *eap)
 	gui_start();
 #ifdef FEAT_JOB_CHANNEL
 	channel_gui_register_all();
+#endif
+#ifdef FEAT_CLIENTSERVER
+	/* TODO: unnecessary? */
+	cmdsrv_gui_register();
 #endif
     }
     if (!ends_excmd(*eap->arg))

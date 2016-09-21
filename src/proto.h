@@ -253,8 +253,9 @@ extern char *vim_SelFile(Widget toplevel, char *prompt, char *init_path, int (*s
 # ifdef FEAT_OLE
 #  include "if_ole.pro"
 # endif
-# if defined(FEAT_CLIENTSERVER) && defined(FEAT_X11)
-#  include "if_xcmdsrv.pro"
+
+# ifdef FEAT_CLIENTSERVER
+#  include "if_cmdsrv.pro"
 # endif
 
 /*

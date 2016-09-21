@@ -3600,7 +3600,7 @@ AC_CHECK_FUNCS(bcmp fchdir fchown fsync getcwd getpseudotty \
 	setpgid setsid sigaltstack sigstack sigset sigsetjmp sigaction \
 	sigvec strcasecmp strerror strftime stricmp strncasecmp \
 	strnicmp strpbrk strtol tgetent towlower towupper iswupper \
-	usleep utime utimes)
+	usleep utime utimes getpeerucred getpeereid)
 AC_FUNC_FSEEKO
 
 dnl define _LARGE_FILES, _FILE_OFFSET_BITS and _LARGEFILE_SOURCE when

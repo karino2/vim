@@ -145,9 +145,6 @@ static void gui_x11_enter_cb(Widget w, XtPointer data, XEvent *event, Boolean *d
 static void gui_x11_leave_cb(Widget w, XtPointer data, XEvent *event, Boolean *dum);
 static void gui_x11_mouse_cb(Widget w, XtPointer data, XEvent *event, Boolean *dum);
 static void gui_x11_check_copy_area(void);
-#ifdef FEAT_CLIENTSERVER
-static void gui_x11_send_event_handler(Widget, XtPointer, XEvent *, Boolean *);
-#endif
 static void gui_x11_wm_protocol_handler(Widget, XtPointer, XEvent *, Boolean *);
 static void gui_x11_blink_cb(XtPointer timed_out, XtIntervalId *interval_id);
 static Cursor gui_x11_create_blank_mouse(void);
@@ -1628,27 +1625,6 @@ gui_mch_open(void)
 	    (XtPointer)NULL);
 #endif
 
-#ifdef FEAT_CLIENTSERVER
-    if (serverName == NULL && serverDelayedStartName != NULL)
-    {
-	/* This is a :gui command in a plain vim with no previous server */
-	commWindow = XtWindow(vimShell);
-	(void)serverRegisterName(gui.dpy, serverDelayedStartName);
-    }
-    else
-    {
-	/*
-	 * Cannot handle "widget-less" windows with XtProcessEvent() we'll
-	 * have to change the "server" registration to that of the main window
-	 * If we have not registered a name yet, remember the window
-	 */
-	serverChangeRegisteredWindow(gui.dpy, XtWindow(vimShell));
-    }
-    XtAddEventHandler(vimShell, PropertyChangeMask, False,
-		      gui_x11_send_event_handler, NULL);
-#endif
-
-
 #if defined(FEAT_MENU) && defined(FEAT_GUI_ATHENA)
     /* The Athena GUI needs this again after opening the window */
     gui_position_menu();
@@ -2701,6 +2677,10 @@ gui_mch_wait_for_chars(long wtime)
 # endif
 #endif
 
+#if defined(FEAT_CLIENTSERVER)
+	cmdsrv_handle_requests();
+#endif
+
 	/*
 	 * Don't use gui_mch_update() because then we will spin-lock until a
 	 * char arrives, instead we use XtAppProcessEvent() to hang until an
@@ -2976,26 +2956,6 @@ gui_x11_wm_protocol_handler(
     gui_shell_closed();
 }
 
-#ifdef FEAT_CLIENTSERVER
-/*
- * Function called when property changed. Check for incoming commands
- */
-    static void
-gui_x11_send_event_handler(
-    Widget	w UNUSED,
-    XtPointer	client_data UNUSED,
-    XEvent	*event,
-    Boolean	*dum UNUSED)
-{
-    XPropertyEvent *e = (XPropertyEvent *) event;
-
-    if (e->type == PropertyNotify && e->window == commWindow
-	    && e->atom == commProperty &&  e->state == PropertyNewValue)
-    {
-	serverEventProc(gui.dpy, event, 0);
-    }
-}
-#endif
 
 /*
  * Cursor blink functions.

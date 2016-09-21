@@ -8437,15 +8437,12 @@ check_connection(void)
     static void
 remote_common(typval_T *argvars, typval_T *rettv, int expr)
 {
-    char_u	*server_name;
+    char_u	*name;
     char_u	*keys;
+    char_u	*serverid;
     char_u	*r = NULL;
     char_u	buf[NUMBUFLEN];
-# ifdef WIN32
-    HWND	w;
-# else
-    Window	w;
-# endif
+    int ret;
 
     if (check_restricted() || check_secure())
 	return;
@@ -8455,21 +8452,30 @@ remote_common(typval_T *argvars, typval_T *rettv, int expr)
 	return;
 # endif
 
-    server_name = get_tv_string_chk(&argvars[0]);
-    if (server_name == NULL)
+    name = get_tv_string_chk(&argvars[0]);
+    if (name == NULL)
 	return;		/* type error; errmsg already given */
     keys = get_tv_string_buf(&argvars[1], buf);
-# ifdef WIN32
-    if (serverSendToVim(server_name, keys, &r, &w, expr, TRUE) < 0)
-# else
-    if (serverSendToVim(X_DISPLAY, server_name, keys, &r, &w, expr, 0, TRUE)
-									  < 0)
-# endif
+
+    serverid = cmdsrv_find_server(name, TRUE);
+    if (serverid == NULL)
+    {
+	ret = -1;
+    }
+    else
+    {
+	if (expr)
+	    ret = cmdsrv_send_expr(serverid, keys, &r);
+	else
+	    ret = cmdsrv_send_keys(serverid, keys);
+    }
+
+    if (ret != 0)
     {
 	if (r != NULL)
 	    EMSG(r);		/* sending worked but evaluation failed */
 	else
-	    EMSG2(_("E241: Unable to send to %s"), server_name);
+	    EMSG2(_("E241: Unable to send to %s"), name);
 	return;
     }
 
@@ -8478,17 +8484,20 @@ remote_common(typval_T *argvars, typval_T *rettv, int expr)
     if (argvars[2].v_type != VAR_UNKNOWN)
     {
 	dictitem_T	v;
-	char_u		str[30];
 	char_u		*idvar;
 
-	sprintf((char *)str, PRINTF_HEX_LONG_U, (long_u)w);
 	v.di_tv.v_type = VAR_STRING;
-	v.di_tv.vval.v_string = vim_strsave(str);
+	if (serverid == NULL)
+	    v.di_tv.vval.v_string = vim_strsave((char_u *)"");
+	else
+	    v.di_tv.vval.v_string = vim_strsave(serverid);
+
 	idvar = get_tv_string_chk(&argvars[2]);
 	if (idvar != NULL)
 	    set_var(idvar, &v.di_tv, FALSE);
 	vim_free(v.di_tv.vval.v_string);
     }
+    vim_free(serverid);
 }
 #endif
 
@@ -8512,22 +8521,26 @@ f_remote_expr(typval_T *argvars UNUSED, typval_T *rettv)
 f_remote_foreground(typval_T *argvars UNUSED, typval_T *rettv UNUSED)
 {
 #ifdef FEAT_CLIENTSERVER
-# ifdef WIN32
-    /* On Win32 it's done in this application. */
-    {
-	char_u	*server_name = get_tv_string_chk(&argvars[0]);
+    char_u *name;
+    char_u *serverid;
 
-	if (server_name != NULL)
-	    serverForeground(server_name);
+    name = get_tv_string_chk(&argvars[0]);
+    if (name == NULL)
+	return;
+
+    serverid = cmdsrv_find_server(name, TRUE);
+    if (serverid == NULL)
+    {
+	EMSG2(_(e_unabletosend), name);
+	return;
     }
-# else
-    /* Send a foreground() expression to the server. */
-    argvars[1].v_type = VAR_STRING;
-    argvars[1].vval.v_string = vim_strsave((char_u *)"foreground()");
-    argvars[2].v_type = VAR_UNKNOWN;
-    remote_common(argvars, rettv, TRUE);
-    vim_free(argvars[1].vval.v_string);
-# endif
+
+    if (cmdsrv_foreground(serverid) != 0)
+    {
+	EMSG2(_(e_unabletosend), name);
+    }
+
+    vim_free(serverid);
 #endif
 }
 
@@ -8537,9 +8550,6 @@ f_remote_peek(typval_T *argvars UNUSED, typval_T *rettv)
 #ifdef FEAT_CLIENTSERVER
     dictitem_T	v;
     char_u	*s = NULL;
-# ifdef WIN32
-    long_u	n = 0;
-# endif
     char_u	*serverid;
 
     if (check_restricted() || check_secure())
@@ -8553,22 +8563,12 @@ f_remote_peek(typval_T *argvars UNUSED, typval_T *rettv)
 	rettv->vval.v_number = -1;
 	return;		/* type error; errmsg already given */
     }
-# ifdef WIN32
-    sscanf((const char *)serverid, SCANF_HEX_LONG_U, &n);
-    if (n == 0)
+    if (cmdsrv_peek_reply(serverid, &s) != 0)
 	rettv->vval.v_number = -1;
+    else if (s != NULL)
+	rettv->vval.v_number = 1;
     else
-    {
-	s = serverGetReply((HWND)n, FALSE, FALSE, FALSE);
-	rettv->vval.v_number = (s != NULL);
-    }
-# else
-    if (check_connection() == FAIL)
-	return;
-
-    rettv->vval.v_number = serverPeekReply(X_DISPLAY,
-						serverStrToWin(serverid), &s);
-# endif
+	rettv->vval.v_number = 0;
 
     if (argvars[1].v_type != VAR_UNKNOWN && rettv->vval.v_number > 0)
     {
@@ -8596,18 +8596,7 @@ f_remote_read(typval_T *argvars UNUSED, typval_T *rettv)
 
     if (serverid != NULL && !check_restricted() && !check_secure())
     {
-# ifdef WIN32
-	/* The server's HWND is encoded in the 'id' parameter */
-	long_u		n = 0;
-
-	sscanf((char *)serverid, SCANF_HEX_LONG_U, &n);
-	if (n != 0)
-	    r = serverGetReply((HWND)n, FALSE, TRUE, TRUE);
-	if (r == NULL)
-# else
-	if (check_connection() == FAIL || serverReadReply(X_DISPLAY,
-		serverStrToWin(serverid), &r, FALSE) < 0)
-# endif
+	if (cmdsrv_wait_reply(serverid, &r) != 0)
 	    EMSG(_("E277: Unable to read a server reply"));
     }
 #endif
@@ -9624,20 +9613,16 @@ f_server2client(typval_T *argvars UNUSED, typval_T *rettv)
 {
 #ifdef FEAT_CLIENTSERVER
     char_u	buf[NUMBUFLEN];
-    char_u	*server = get_tv_string_chk(&argvars[0]);
+    char_u	*serverid = get_tv_string_chk(&argvars[0]);
     char_u	*reply = get_tv_string_buf_chk(&argvars[1], buf);
 
     rettv->vval.v_number = -1;
-    if (server == NULL || reply == NULL)
+    if (serverid == NULL || reply == NULL)
 	return;
     if (check_restricted() || check_secure())
 	return;
-# ifdef FEAT_X11
-    if (check_connection() == FAIL)
-	return;
-# endif
 
-    if (serverSendReply(server, reply) < 0)
+    if (cmdsrv_send_notification(serverid, reply) < 0)
     {
 	EMSG(_("E258: Unable to send to client"));
 	return;
@@ -9654,13 +9639,7 @@ f_serverlist(typval_T *argvars UNUSED, typval_T *rettv)
     char_u	*r = NULL;
 
 #ifdef FEAT_CLIENTSERVER
-# ifdef WIN32
-    r = serverGetVimNames();
-# else
-    make_connection();
-    if (X_DISPLAY != NULL)
-	r = serverGetVimNames(X_DISPLAY);
-# endif
+    cmdsrv_server_list(&r);
 #endif
     rettv->v_type = VAR_STRING;
     rettv->vval.v_string = r;
